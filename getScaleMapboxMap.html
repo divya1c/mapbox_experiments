@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title></title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.40.1/mapbox-gl.js'></script>
+    <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.40.1/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body { margin:0; padding:0; }
+        #map { position:absolute; top:0; bottom:0; width:100%; }
+    </style>
+</head>
+
+<body>
+<style>
+.coordinates {
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    padding:5px 10px;
+    margin: 0;
+    font-size: 11px;
+    line-height: 18px;
+    border-radius: 3px;
+    display: none;
+}
+
+#hole {
+    position: absolute;
+    left: 350px;
+    top: 75px;
+    width: 750px;
+    height: 750px;
+    z-index: 2;
+    box-shadow: 0 0 0 99999px rgba(0, 0, 0, .8);
+    pointer-events: none;
+}
+
+#draw-control {
+    position: absolute;
+    left: 40px;
+    top: 40px;
+    width: 40px;
+    height: 40px;
+    z-index: 2;
+    background: white;
+}
+</style>
+
+<div id='map'></div>
+<div id='hole'></div>
+<div id='draw-control'></div>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1Ijoibmljb2xlaHUwOCIsImEiOiI4ZjcwZmFkZDVmNjNlMmJjMTQ2Y2E0MTFjOTcwMDJmOSJ9.g7jfXLm1yZzYfNNvKt7sgw';
+
+var isCursorDrawing;
+
+var geojson_polygon = {
+    "type": "FeatureCollection",
+    "features": [{
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[[0, 0]]]
+        }
+    }]
+}
+
+var geojson_line = {
+    "type": "FeatureCollection",
+    "features": [{
+        "type": "Feature",
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[0, 0]]
+        }
+    }]
+};
+
+var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/streets-v9',
+    center: [0, 0],
+    zoom: 11
+});
+
+var canvas = map.getCanvasContainer();
+
+map.on('load', function() {
+    drawNewDrawBounds_mindblown(false);
+    document.getElementById('draw-control').onclick = function() {
+        if (isCursorDrawing) {
+            canvas.style.cursor = '';
+            isCursorDrawing = false;
+            map.dragPan.enable();
+        } else {
+            canvas.style.cursor = 'move';
+            isCursorDrawing = true;
+            map.dragPan.disable();
+            map.once('mousedown', mouseDown);
+        }
+    }
+
+    map.addSource('trace', {
+        type: 'geojson', 
+        data: geojson_line 
+    });
+
+    map.addLayer({
+        "id": "trace",
+        "type": "line",
+        "source": "trace",
+        "paint": {
+            "line-color": "yellow",
+            "line-opacity": 0.75,
+            "line-width": 5
+        }
+    });
+
+    map.addSource('draw_polygon', {
+        type: 'geojson',
+        data: geojson_polygon
+    });
+
+    map.addLayer({
+        "id": "draw_polygon",
+        "type": "fill",
+        "source": "draw_polygon",
+        "paint": {
+            "fill-color": "red",
+            "fill-opacity": 0.75
+        },
+        'layout': {
+           'visibility': 'none'
+        },      
+    });
+});
+
+map.on('zoom', function() {
+    drawNewDrawBounds_mindblown(true);
+});
+
+map.on('drag', function() {
+    drawNewDrawBounds_mindblown(true);
+});
+
+function mouseDown(e) {
+    if (!isCursorDrawing) return;
+
+    isDragging = true;
+
+    // Set a cursor indicator
+    canvas.style.cursor = 'grab';
+
+    // setup a polygon entry in geojson polygon
+    // var geojson_polygon_coordinates = geojson_polygon.features[0].geometry.coordinates;
+    // geojson_polygon_coordinates.push[[e.lnglat.lng, e.lnglat.lat]]
+
+
+    // Mouse events
+    map.on('mousemove', onMove);
+    map.once('mouseup', onUp);
+}
+
+function onMove(e) {
+    if (!isDragging) return;
+    var coords = e.lngLat;
+
+    // Set a UI indicator for dragging.
+    canvas.style.cursor = 'grabbing';
+
+    // Update the Point feature in `geojson` coordinates
+    // and call setData to the source layer `point` on it.
+    geojson_line.features[0].geometry.coordinates.push([coords.lng, coords.lat]);
+    geojson_polygon.features[0].geometry.coordinates[0].push([coords.lng, coords.lat]);
+    map.getSource('trace').setData(geojson_line);
+    // console.log(geojson_line);
+}
+
+function onUp(e) {
+    if (!isDragging) return;
+    var coords = e.lngLat;
+
+    canvas.style.cursor = '';
+    isDragging = false;
+
+    if (geojson_polygon.features.length > 0) {
+        console.log(geojson_polygon.features[0].geometry);
+        var first_point_polygon = geojson_polygon.features[0].geometry.coordinates[0][0];
+        geojson_polygon.features[0].geometry.coordinates[0].push(first_point_polygon);
+        // console.log(geojson_polygon.features[0].geometry);
+        map.getSource('draw_polygon').setData(geojson_polygon);
+        map.setLayoutProperty('draw_polygon', 'visibility', 'visible');
+    }
+
+    // Unbind mouse events
+    map.off('mousemove', onMove);
+
+    // reset to normal mode
+    canvas.style.cursor = '';
+    isCursorDrawing = false;
+    map.dragPan.enable();
+}
+
+function drawNewDrawBounds_mindblown(refresh) {
+    var center = turf.point([map.getCenter().wrap().lng, map.getCenter().wrap().lat]);
+    // 10 mile bounding box
+    var distance = Math.sqrt(2)*10;
+    var options = {units: 'miles'};
+    var destination_ne = turf.destination(center, distance, 45, options);
+    var destination_se = turf.destination(center, distance, 135, options);
+    var destination_nw = turf.destination(center, distance, -45, options);
+    var destination_sw = turf.destination(center, distance, -135, options);
+
+    drawScreenAttachedBounds(destination_nw, destination_ne);
+}
+
+function drawScreenAttachedBounds(destination_nw, destination_ne) {
+    var hole = document.getElementById('hole');
+    var projected_nw = map.project(destination_nw.geometry.coordinates);
+    var projected_ne = map.project(destination_ne.geometry.coordinates);
+    hole.style.top = projected_nw.y + "px";
+    hole.style.left = projected_nw.x + "px";
+    hole.style.width = (projected_ne.x - projected_nw.x) + "px";
+    hole.style.height = hole.style.width;
+}
+
+/**********************************************/
+/**********************************************/
+/* functions from the other tries that failed */
+/******** these are not used anywhere *********/
+/**********************************************/
+/**********************************************/
+
+// function drawMapAttachedBounds(refresh) {
+//     if (refresh) {
+//         map.getSource('draw_polygon').setData(geojson_polygon);
+//     } else {
+//         map.addSource('draw_polygon', {
+//             type: 'geojson',
+//             data: geojson_polygon
+//         });
+
+//         map.addLayer({
+//             "id": "draw_polygon",
+//             "type": "fill",
+//             "source": "draw_polygon",
+//             "paint": {
+//                 "fill-color": "red",
+//                 "fill-opacity": 0.75
+//             }     
+//         });        
+//     }    
+// }
+
+// function drawNewDrawBounds_noturf(refresh) {
+//     console.log("*********************");
+//     console.log(map.getZoom());
+//     console.log(40075016.686 * Math.abs(Math.cos(map.getCenter().lat * 180/Math.PI)) / Math.pow(2, map.getZoom()+8));
+//     var map_scale = 40075016.686 * Math.abs(Math.cos(map.getCenter().lat * 180/Math.PI)) / Math.pow(2, map.getZoom()+8);
+//     var box_length_in_meters = 60000;
+//     // get how much to add and subtract from projected center of map
+//     var add_to_x_y = (box_length_in_meters)/(map_scale*2);
+
+//     var projected_center_x = map.project(map.getCenter()).x;
+//     var projected_center_y = map.project(map.getCenter()).y;
+//     var projected_nw_x = projected_center_x - add_to_x_y;
+//     var projected_nw_y = projected_center_y - add_to_x_y;
+//     var projected_sw_x = projected_center_x - add_to_x_y;
+//     var projected_sw_y = projected_center_y + add_to_x_y;
+//     var projected_ne_x = projected_center_x + add_to_x_y;
+//     var projected_ne_y = projected_center_y - add_to_x_y;
+//     var projected_se_x = projected_center_x + add_to_x_y;
+//     var projected_se_y = projected_center_y + add_to_x_y;
+
+//     var lnglat_nw = map.unproject({x: projected_nw_x, y: projected_nw_y});
+//     var lnglat_sw = map.unproject({x: projected_sw_x, y: projected_sw_y});
+//     var lnglat_ne = map.unproject({x: projected_ne_x, y: projected_ne_y});
+//     var lnglat_se = map.unproject({x: projected_se_x, y: projected_se_y});
+
+//     console.log(add_to_x_y);
+//     console.log([lnglat_nw, lnglat_sw, lnglat_ne, lnglat_se]);
+//     console.log("*********************");   
+
+//     geojson_polygon.features[0].geometry.coordinates[0] = [[lnglat_nw.lng, lnglat_nw.lat], [lnglat_sw.lng, lnglat_sw.lat], [lnglat_se.lng, lnglat_se.lat], [lnglat_ne.lng, lnglat_ne.lat], [lnglat_nw.lng, lnglat_nw.lat]];
+
+//     if (refresh) {
+//         map.getSource('draw_polygon').setData(geojson_polygon);
+//     } else {
+//         map.addSource('draw_polygon', {
+//             type: 'geojson',
+//             data: geojson_polygon
+//         });
+
+//         map.addLayer({
+//             "id": "draw_polygon",
+//             "type": "fill",
+//             "source": "draw_polygon",
+//             "paint": {
+//                 "fill-color": "red",
+//                 "fill-opacity": 0.75
+//             }     
+//         });        
+//     } 
+// }
+
+</script>
+</body>
