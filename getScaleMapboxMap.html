@@ -61,28 +61,14 @@ mapboxgl.accessToken = 'pk.eyJ1Ijoibmljb2xlaHUwOCIsImEiOiI4ZjcwZmFkZDVmNjNlMmJjM
 var isCursorDrawing;
 
 var geojson_polygon = {
-    // "type": "FeatureCollection",
-    // "features": [{
-    //     "type": "Feature",
-    //     "geometry": {
-    //         "type": "Polygon",
-    //         "coordinates": []
-    //     }
-    // }]
     "type": "MultiPolygon", 
     "coordinates": []
 }
 
 var geojson_line = {
-    "type": "FeatureCollection",
-    "features": [{
-        "type": "Feature",
-        "geometry": {
-            "type": "LineString",
-            "coordinates": [[0, 0]]
-        }
-    }]
-};
+    "type": "MultiLineString",
+    "coordinates": []
+}
 
 var map = new mapboxgl.Map({
     container: 'map',
@@ -107,22 +93,6 @@ map.on('load', function() {
             map.once('mousedown', mouseDown);
         }
     }
-
-    map.addSource('trace', {
-        type: 'geojson', 
-        data: geojson_line 
-    });
-
-    map.addLayer({
-        "id": "trace",
-        "type": "line",
-        "source": "trace",
-        "paint": {
-            "line-color": "yellow",
-            "line-opacity": 0.75,
-            "line-width": 5
-        }
-    });
 });
 
 map.on('zoom', function() {
@@ -141,14 +111,33 @@ function mouseDown(e) {
     // Set a cursor indicator
     canvas.style.cursor = 'grab';
 
+    // setup a line entry in geojson line
+    var geojson_line_coordinates = geojson_line.coordinates;
+    geojson_line_coordinates.push([[e.lngLat.lng, e.lngLat.lat]]);
+
+    if (!map.getSource('trace')) {
+        map.addSource('trace', {
+            type: 'geojson', 
+            data: geojson_line 
+        });
+
+        map.addLayer({
+            "id": "trace",
+            "type": "line",
+            "source": "trace",
+            "paint": {
+                "line-color": "yellow",
+                "line-opacity": 0.75,
+                "line-width": 5
+            }
+        });
+    }
+
     // setup a polygon entry in geojson polygon
     var geojson_polygon_coordinates = geojson_polygon.coordinates;
-    var coords = e.lngLat;
-    console.log(coords);
     geojson_polygon_coordinates.push([[[e.lngLat.lng, e.lngLat.lat]]]);
-    console.log(geojson_polygon);
 
-    if (!map.getSource('draw_polygon')){
+    if (!map.getSource('draw_polygon')) {
         map.addSource('draw_polygon', {
             type: 'geojson',
             data: geojson_polygon
@@ -182,13 +171,12 @@ function onMove(e) {
 
     // Update the Point feature in `geojson` coordinates
     // and call setData to the source layer `point` on it.
-    geojson_line.features[0].geometry.coordinates.push([coords.lng, coords.lat]);
+    var geojson_line_coordinates = geojson_line.coordinates;
+    geojson_line_coordinates[geojson_line_coordinates.length - 1].push([coords.lng, coords.lat]);
+    map.getSource('trace').setData(geojson_line);
 
     var geojson_polygon_coordinates = geojson_polygon.coordinates;
     geojson_polygon_coordinates[geojson_polygon_coordinates.length - 1][0].push([coords.lng, coords.lat]);
-    
-    map.getSource('trace').setData(geojson_line);
-    // console.log(geojson_line);
 }
 
 function onUp(e) {
@@ -203,7 +191,6 @@ function onUp(e) {
         var recent_polygon = geojson_polygon_coordinates[geojson_polygon_coordinates.length - 1];
         var first_point = recent_polygon[0][0];
         recent_polygon[0].push(first_point);
-        console.log(geojson_polygon);
         
         map.getSource('draw_polygon').setData(geojson_polygon);
         map.setLayoutProperty('draw_polygon', 'visibility', 'visible');
