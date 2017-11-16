@@ -61,14 +61,16 @@ mapboxgl.accessToken = 'pk.eyJ1Ijoibmljb2xlaHUwOCIsImEiOiI4ZjcwZmFkZDVmNjNlMmJjM
 var isCursorDrawing;
 
 var geojson_polygon = {
-    "type": "FeatureCollection",
-    "features": [{
-        "type": "Feature",
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [[[0, 0]]]
-        }
-    }]
+    // "type": "FeatureCollection",
+    // "features": [{
+    //     "type": "Feature",
+    //     "geometry": {
+    //         "type": "Polygon",
+    //         "coordinates": []
+    //     }
+    // }]
+    "type": "MultiPolygon", 
+    "coordinates": []
 }
 
 var geojson_line = {
@@ -121,24 +123,6 @@ map.on('load', function() {
             "line-width": 5
         }
     });
-
-    map.addSource('draw_polygon', {
-        type: 'geojson',
-        data: geojson_polygon
-    });
-
-    map.addLayer({
-        "id": "draw_polygon",
-        "type": "fill",
-        "source": "draw_polygon",
-        "paint": {
-            "fill-color": "red",
-            "fill-opacity": 0.75
-        },
-        'layout': {
-           'visibility': 'none'
-        },      
-    });
 });
 
 map.on('zoom', function() {
@@ -158,9 +142,31 @@ function mouseDown(e) {
     canvas.style.cursor = 'grab';
 
     // setup a polygon entry in geojson polygon
-    // var geojson_polygon_coordinates = geojson_polygon.features[0].geometry.coordinates;
-    // geojson_polygon_coordinates.push[[e.lnglat.lng, e.lnglat.lat]]
+    var geojson_polygon_coordinates = geojson_polygon.coordinates;
+    var coords = e.lngLat;
+    console.log(coords);
+    geojson_polygon_coordinates.push([[[e.lngLat.lng, e.lngLat.lat]]]);
+    console.log(geojson_polygon);
 
+    if (!map.getSource('draw_polygon')){
+        map.addSource('draw_polygon', {
+            type: 'geojson',
+            data: geojson_polygon
+        });
+
+        map.addLayer({
+            "id": "draw_polygon",
+            "type": "fill",
+            "source": "draw_polygon",
+            "paint": {
+                "fill-color": "red",
+                "fill-opacity": 0.75
+            },
+            'layout': {
+               'visibility': 'none'
+            },      
+        });
+    }
 
     // Mouse events
     map.on('mousemove', onMove);
@@ -177,7 +183,10 @@ function onMove(e) {
     // Update the Point feature in `geojson` coordinates
     // and call setData to the source layer `point` on it.
     geojson_line.features[0].geometry.coordinates.push([coords.lng, coords.lat]);
-    geojson_polygon.features[0].geometry.coordinates[0].push([coords.lng, coords.lat]);
+
+    var geojson_polygon_coordinates = geojson_polygon.coordinates;
+    geojson_polygon_coordinates[geojson_polygon_coordinates.length - 1][0].push([coords.lng, coords.lat]);
+    
     map.getSource('trace').setData(geojson_line);
     // console.log(geojson_line);
 }
@@ -189,11 +198,13 @@ function onUp(e) {
     canvas.style.cursor = '';
     isDragging = false;
 
-    if (geojson_polygon.features.length > 0) {
-        console.log(geojson_polygon.features[0].geometry);
-        var first_point_polygon = geojson_polygon.features[0].geometry.coordinates[0][0];
-        geojson_polygon.features[0].geometry.coordinates[0].push(first_point_polygon);
-        // console.log(geojson_polygon.features[0].geometry);
+    if (geojson_polygon.coordinates.length > 0) {
+        var geojson_polygon_coordinates = geojson_polygon.coordinates;
+        var recent_polygon = geojson_polygon_coordinates[geojson_polygon_coordinates.length - 1];
+        var first_point = recent_polygon[0][0];
+        recent_polygon[0].push(first_point);
+        console.log(geojson_polygon);
+        
         map.getSource('draw_polygon').setData(geojson_polygon);
         map.setLayoutProperty('draw_polygon', 'visibility', 'visible');
     }
